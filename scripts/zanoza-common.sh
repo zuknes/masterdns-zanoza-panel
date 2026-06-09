@@ -19,7 +19,7 @@ read_tty() {
 	printf '%s' "${reply:-$def}"
 }
 
-random_alnum() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$1"; }
+random_alnum() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$1" || true; }
 
 # --------------------------------------------------------------------------
 # Container runtime detection

@@ -135,7 +135,9 @@ EOF
 	log "Credentials updated."
 	log "  Login    : ${user}"
 	log "  Password : ${pass}"
-	log "Restart the panel to apply: zanoza restart"
+	log "Restarting..."
+	container_restart
+	log "Done."
 }
 
 change_port() {
