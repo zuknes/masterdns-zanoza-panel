@@ -22,22 +22,49 @@
 
 ## Установка
 
-Ubuntu / Debian VPS, от root:
+### Docker (рекомендуется) — любой Linux
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/palmbeachpete9/masterdns-zanoza-panel/main/scripts/install.sh | sudo bash
+# Docker будет установлен автоматически если отсутствует.
+# Запустите установщик:
+curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-setup/scripts/docker-install.sh | sudo bash
 ```
 
-Установщик (в стиле 3x-ui) спросит:
+Установщик проведёт вас по шагам:
 
-1. **Порт** — `A random port will be assigned. Customise? y/N:`
-2. **Путь панели** — `Path /admin will be assigned. Customise? y/N:`
-3. **Сертификат веб-панели**:
-   - **1) IP-сертификат** — self-signed на IP сервера, срок 6 дней, автопродление (systemd-таймер).
-   - **2) Доменный сертификат** Let's Encrypt — нужна A-запись `panel.example.com` → IP сервера.
-   - **3) Без сертификата** — панель слушает **только** на `127.0.0.1` (внешний доступ через nginx/SSH-туннель).
+1. **Порт 53** — проверит и предложит освободить (отключит `DNSStubListener` у systemd-resolved)
+2. **Оптимизации ядра** — спросит, применить ли sysctl-тюнинг для высокой нагрузки DNS (по умолчанию — да). Настройки пишутся в `/etc/sysctl.d/99-zanoza-docker.conf` и легко убираются: `sudo rm /etc/sysctl.d/99-zanoza-docker.conf && sudo sysctl --system`
+3. **Логин/пароль** — авто-генерация (10 + 20 символов) или ввод вручную
+4. **Сертификат**:
+   - **1) Self-signed IP-сертификат** — на 6 дней, авто-продление внутри контейнера (crond)
+   - **2) Let's Encrypt** — нужна A-запись `panel.example.com` → IP сервера
+   - **3) Без TLS** — панель слушает только `127.0.0.1` (доступ через nginx/SSH-туннель)
 
-После установки генерируются **логин (10 символов)** и **пароль (20 символов)** и выводится полный адрес панели, в зависимости от выбора в п.1-3.
+Панель работает в `network_mode: host`, контейнер не нужно публиковать порты. Авто-рестарт включён (`restart: unless-stopped`).
+
+После установки доступна CLI-команда `zanoza`:
+
+```sh
+zanoza              # интерактивное меню управления (требует sudo)
+sudo zanoza restart  # перезапустить панель
+sudo zanoza logs     # просмотр логов
+sudo zanoza update   # обновить (git pull + пересборка)
+sudo zanoza uninstall # удалить панель
+```
+
+Конфигурация панели — редактируйте `.env` и перезапускайте через `zanoza restart`. Учётные данные хранятся в `zanoza-config/panel.env` (хэшированы).
+
+Для локальных переопределений (например, другой `restart` policy или дополнительные volume) создайте `docker-compose.override.yml` — он автоматически подхватывается Docker Compose и находится в `.gitignore`.
+
+### Legacy — bare-metal (Ubuntu / Debian)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-setup/scripts/install.sh | sudo bash
+```
+
+Установщик устанавливает Go, собирает бинарники из исходников, ставит systemd-сервис, CLI-команду `zanoza`.
+
+> **Примечание:** Docker-версия проще, не требует Go toolchain, изолирует панель и работает на любом дистрибутиве Linux.
 
 ## Модель инстансов (домены + ключи)
 
@@ -51,17 +78,6 @@ curl -fsSL https://raw.githubusercontent.com/palmbeachpete9/masterdns-zanoza-pan
 > **Важно!** Все домены инстансов (`v.example1.com`, `v.example2.com`, …) должны быть делегированы, и иметь:<br>
 >**A-запись**, указывающую на IP адрес сервера с панелью<br>
 >**NS-запись**, указывающую на A-запись.
-
-## Управление: команда `zanoza`
-
-```sh
-zanoza              # интерактивное меню (как x-ui)
-zanoza restart      # перезапустить панель
-zanoza uninstall    # удалить панель
-zanoza --help       # краткая справка
-```
-
-Меню умеет: показать адрес панели, сбросить логин/пароль, изменить порт/путь, перевыпустить сертификат, перезапуск, логи, обновление, удаление.
 
 ## Структура репозитория
 
@@ -77,7 +93,14 @@ masterdns-zanoza-panel/
 │   └── web/dist/                 #   собранный фронтенд (встроен в бинарь)
 ├── masterdns/                    # форк сервера MasterDnsVPN
 │   └── internal/keyring/         #   покеольцевой выбор ключей по домену
-├── scripts/install.sh, scripts/zanoza
+├── scripts/
+│   ├── docker-install.sh         #   установщик Docker (любой Linux)
+│   ├── zanoza-docker             #   CLI-команда управления Docker-версией
+│   └── install.sh                #   установщик bare-metal (Ubuntu/Debian)
+├── Dockerfile                    #   Docker-образ (Alpine, из исходников)
+├── docker-compose.yml            #   network_mode: host, restart: unless-stopped
+├── docker-entrypoint.sh          #   entrypoint: config.json, crond для авто-renew
+├── docker-renew-cert.sh          #   перевыпуск self-signed сертификата (crond)
 └── packaging/systemd/zanoza-panel.service
 ```
 
@@ -99,6 +122,8 @@ masterdns-zanoza-panel/
 | `ZANOZA_DNS_HOST` | UDP-адрес DNS-сервера | `0.0.0.0` |
 | `ZANOZA_DNS_PORT` | UDP-порт DNS-сервера (1–65535) | `53` |
 | `ZANOZA_DNS_UPSTREAM` | JSON-массив upstream-резолверов | `["1.1.1.1:53", "1.0.0.1:53"]` |
+
+В Docker-версии переменные задаются в файле `.env` (копируется из `.env.example` при установке).
 
 ## Сборка из исходников
 

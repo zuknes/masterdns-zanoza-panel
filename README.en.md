@@ -22,23 +22,49 @@ The admin creates "instances" (a **domain + encryption key** pair) and hands the
 
 ## Install
 
-Ubuntu / Debian VPS, as root:
+### Docker (recommended) — any Linux
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/palmbeachpete9/masterdns-zanoza-panel/main/scripts/install.sh | sudo bash
+# Docker will be auto-installed if missing.
+# Run the installer:
+curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-setup/scripts/docker-install.sh | sudo bash
 ```
 
-The installer (3x-ui style) asks for:
+The installer walks you through:
 
-1. **Port** — `A random port will be assigned. Customise? y/N:`
-2. **Admin path** — `Path /admin will be assigned. Customise? y/N:`
-3. **Web panel certificate**:
-   - **1) IP certificate** — self-signed for the server IP, 6-day validity, auto-renewed via a systemd timer.
-   - **2) Domain certificate** via Let's Encrypt — needs an A record `panel.example.com` → server IP.
-   - **3) No certificate** — the panel listens **only** on `127.0.0.1` (expose via nginx / SSH tunnel).
+1. **Port 53** — checks if it's in use and offers to free it (disables `DNSStubListener` in systemd-resolved)
+2. **Kernel tuning** — asks whether to apply sysctl optimizations for high DNS throughput (default: yes). Settings land in `/etc/sysctl.d/99-zanoza-docker.conf` and are easily removed: `sudo rm /etc/sysctl.d/99-zanoza-docker.conf && sudo sysctl --system`
+3. **Login/password** — auto-generated (10 + 20 chars) or entered manually
+4. **Certificate**:
+   - **1) Self-signed IP cert** — 6-day validity, auto-renewed inside the container (crond)
+   - **2) Let's Encrypt** — requires an A record `panel.example.com` → server IP
+   - **3) No TLS** — panel listens on `127.0.0.1` only (expose via nginx / SSH tunnel)
 
-After install it generates a **10-char login** and **20-char password** and prints the full panel URL:
-`https://IP:PORT/admin`, `https://panel.example.com:PORT/admin`, or `http://127.0.0.1:PORT/admin`.
+The panel runs in `network_mode: host`, no need to publish ports. Auto-restart is enabled (`restart: unless-stopped`).
+
+After installation, the `zanoza` CLI command is available:
+
+```sh
+zanoza              # interactive management menu (requires sudo)
+sudo zanoza restart  # restart the panel
+sudo zanoza logs     # view logs
+sudo zanoza update   # update (git pull + rebuild)
+sudo zanoza uninstall # remove the panel
+```
+
+Panel configuration — edit `.env` and restart with `zanoza restart`. Credentials are stored in `zanoza-config/panel.env` (hashed).
+
+For local overrides (e.g. a different `restart` policy or extra volumes), create a `docker-compose.override.yml` — it is automatically picked up by Docker Compose and is git-ignored.
+
+### Legacy — bare-metal (Ubuntu / Debian)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-setup/scripts/install.sh | sudo bash
+```
+
+The installer sets up Go, builds binaries from source, installs a systemd service and the `zanoza` CLI command.
+
+> **Note:** The Docker version is simpler, requires no Go toolchain, isolates the panel, and works on any Linux distribution.
 
 ## Instance model (domains × keys)
 
@@ -47,20 +73,9 @@ A MasterDnsVPN server is a single process bound to **UDP :53** with **one** key 
 - **One key per domain** → direct decrypt, **any** cipher works including **XOR** (fastest, zero overhead).
 - **Several keys on one domain** → the server trials the ring; **AEAD** (ChaCha20 / AES-GCM) is required because only AEAD can tell the right key by its auth tag. Trial happens on that domain's inbound packets only; the hot key is moved to the front of the ring.
 
-> **A records:** every instance domain (`v.user1.example.com`, `v.user2.example.com`, …) must be delegated (NS) and/or point via an A record at **this panel server's IP**. Many domains may resolve to one IP.
-
 An instance's encryption method must **match** the method in the Zanoza app (the `zanoza://` link carries it automatically).
 
-## Management: the `zanoza` command
-
-```sh
-zanoza              # interactive menu (x-ui style)
-zanoza restart      # restart the panel
-zanoza uninstall    # remove the panel
-zanoza --help       # short help
-```
-
-The menu can: show the panel URL, reset login/password, change port/path, re-issue the certificate, restart, view logs, update, uninstall.
+> **Important:** Every instance domain (`v.user1.example.com`, `v.user2.example.com`, …) must be delegated (NS) and/or point via an A record at **this panel server's IP**. Many domains may resolve to one IP.
 
 ## Repository layout
 
@@ -76,7 +91,14 @@ masterdns-zanoza-panel/
 │   └── web/dist/                 #   built frontend (embedded in the binary)
 ├── masterdns/                    # forked MasterDnsVPN server
 │   └── internal/keyring/         #   per-domain keyring selection
-├── scripts/install.sh, scripts/zanoza
+├── scripts/
+│   ├── docker-install.sh         #   Docker installer (any Linux)
+│   ├── zanoza-docker             #   Docker management CLI command
+│   └── install.sh                #   bare-metal installer (Ubuntu/Debian)
+├── Dockerfile                    #   Docker image (Alpine, built from source)
+├── docker-compose.yml            #   network_mode: host, restart: unless-stopped
+├── docker-entrypoint.sh          #   entrypoint: config.json, crond for auto-renew
+├── docker-renew-cert.sh          #   self-signed cert renewal (crond)
 └── packaging/systemd/zanoza-panel.service
 ```
 
@@ -98,6 +120,8 @@ All variables are optional; the panel works without them using defaults.
 | `ZANOZA_DNS_HOST` | DNS server UDP listen address | `0.0.0.0` |
 | `ZANOZA_DNS_PORT` | DNS server UDP port (1–65535) | `53` |
 | `ZANOZA_DNS_UPSTREAM` | JSON array of upstream resolvers | `["1.1.1.1:53", "1.0.0.1:53"]` |
+
+In the Docker version, variables are set in the `.env` file (copied from `.env.example` during install).
 
 ## Build from source
 

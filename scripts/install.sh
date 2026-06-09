@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Zanoza Panel installer (Debian/Ubuntu, run as root).
-#   curl -fsSL https://raw.githubusercontent.com/palmbeachpete9/masterdns-zanoza-panel/main/scripts/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-setup/scripts/install.sh | sudo bash
 # Prompts for port, admin path and TLS certificate (3x-ui style), generates
 # admin credentials, builds the forked MasterDnsVPN server + the panel, and
 # installs the `zanoza` management command.
@@ -14,8 +14,9 @@ set -euo pipefail
 # instances (F10).
 MODE="${ZANOZA_MODE:-install}"
 
-REPO="${ZANOZA_REPO:-https://github.com/palmbeachpete9/masterdns-zanoza-panel.git}"
-REF="${ZANOZA_REF:-main}"
+REPO="${ZANOZA_REPO:-https://github.com/zuknes/masterdns-zanoza-panel.git}"
+# TODO(merge): change default branch to "main" when merging to main.
+REF="${ZANOZA_REF:-feature/docker-installer}"
 SRC_DIR="${ZANOZA_SRC_DIR:-/opt/masterdns-zanoza-panel}"
 CONFIG_DIR="${ZANOZA_CONFIG_DIR:-/etc/zanoza-panel}"
 CONFIG_PATH="$CONFIG_DIR/config.json"

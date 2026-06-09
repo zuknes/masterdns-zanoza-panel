@@ -17,6 +17,11 @@ masterdns/masterdns-server
 # Vendored masterdns build artefacts
 masterdns/bin/
 
+# Docker runtime
+.env
+zanoza-config/
+docker-compose.override.yml
+
 # Go tooling cache
 .golangci-lint-cache/
 .mk/
