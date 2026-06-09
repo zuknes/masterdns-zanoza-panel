@@ -265,9 +265,13 @@ update_panel() {
 	if [ ! -d "$REPO_DIR/.git" ]; then
 		die "not a git repository. Re-run the installer first."
 	fi
-	local branch
+	local branch pull_out
 	branch="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
-	git -C "$REPO_DIR" pull origin "$branch" || die "git pull failed. Check your network and git remote (expected: origin/${branch})."
+	pull_out="$(git -C "$REPO_DIR" pull origin "$branch" 2>&1)" || die "git pull failed. Check your network and git remote (expected: origin/${branch})."
+	if echo "$pull_out" | grep -qi "Already up to date"; then
+		log "Already up to date — nothing to do."
+		return 0
+	fi
 
 	case "${CONTAINER_RUNTIME}" in
 		docker)
