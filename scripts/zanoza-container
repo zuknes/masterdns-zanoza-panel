@@ -281,10 +281,12 @@ update_panel() {
 	case "${CONTAINER_RUNTIME}" in
 		docker)
 			docker compose -f "${COMPOSE_FILE}" up -d --build --force-recreate
+			docker image prune -f || true
 			;;
 		podman)
 			container_build
 			container_restart
+			podman image prune -f || true
 			;;
 	esac
 	log "Update complete."
