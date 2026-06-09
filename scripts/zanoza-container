@@ -209,8 +209,9 @@ EOF
 		sed -i 's|^ZANOZA_TLS_CERT=|#ZANOZA_TLS_CERT=|' "$ENV_FILE" 2>/dev/null || true
 		sed -i 's|^ZANOZA_TLS_KEY=|#ZANOZA_TLS_KEY=|' "$ENV_FILE" 2>/dev/null || true
 		rm -f "$CONFIG_DIR/tls.crt" "$CONFIG_DIR/tls.key" "$CONFIG_DIR/.renew-self-signed"
-		log "TLS disabled. Panel will listen on 127.0.0.1 only. Access via nginx/SSH tunnel."
-		log "Restart the panel to apply: zanoza restart"
+		log "TLS disabled. Restarting..."
+		container_restart
+		log "Pane now accessible via http://127.0.0.1:${ZANOZA_PANEL_PORT:-8443}${ZANOZA_PANEL_PATH:-/admin} — use SSH tunnel or local nginx proxy."
 		;;
 	2)
 		local domain reload_cmd
@@ -242,7 +243,9 @@ EOF
 				set_env_var "ZANOZA_PANEL_ADDR" "0.0.0.0"
 				set_env_var "ZANOZA_TLS_CERT" "/etc/zanoza-panel/tls.crt"
 				set_env_var "ZANOZA_TLS_KEY" "/etc/zanoza-panel/tls.key"
-				log "Self-signed certificate generated for ${ip} (6-day validity, auto-renews daily)."
+				log "Self-signed certificate generated for ${ip}. Restarting..."
+				container_restart
+				log "Done."
 			else
 				die "openssl failed to generate self-signed certificate."
 			fi
