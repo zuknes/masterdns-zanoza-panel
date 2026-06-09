@@ -310,6 +310,9 @@ uninstall_panel() {
 	ans="$(read_tty "Remove .env file (${ENV_FILE})? [y/N]: " "N")"
 	case "$ans" in y|Y) rm -f "$ENV_FILE" && log "Removed ${ENV_FILE}.";; esac
 
+	ans="$(read_tty "Remove repository directory (${REPO_DIR})? [y/N]: " "N")"
+	case "$ans" in y|Y) rm -rf "$REPO_DIR" && log "Removed ${REPO_DIR}.";; esac
+
 	ans="$(read_tty "Remove the zanoza command (/usr/local/bin/zanoza) and install config? [y/N]: " "N")"
 	case "$ans" in y|Y)
 		rm -f /usr/local/bin/zanoza "$INSTALL_CONF" "$LEGACY_MARKER"
@@ -317,7 +320,8 @@ uninstall_panel() {
 		;;
 	esac
 
-	log "Uninstall complete. The repository directory (${REPO_DIR}) was not removed — delete it manually if desired."
+	log "Uninstall complete."
+	[ -d "$REPO_DIR" ] && log "The repository directory (${REPO_DIR}) was not removed — delete it manually if desired."
 }
 
 # ==========================================================================
