@@ -1,10 +1,10 @@
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.25-alpine AS builder
 
 ENV GOTOOLCHAIN=local
 ENV GODEBUG=netdns=go
 
-# Prefer IPv4 to avoid "network is unreachable" on IPv6-broken networks.
-RUN echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
+# Prefer IPv4 (safe on both glibc and musl).
+RUN touch /etc/gai.conf && echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
 
 WORKDIR /src
 COPY go.mod go.sum ./
