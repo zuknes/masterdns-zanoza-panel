@@ -278,8 +278,6 @@ update_panel() {
 		return 0
 	fi
 
-	cp "$REPO_DIR/scripts/zanoza-container" /usr/local/bin/zanoza && chmod 755 /usr/local/bin/zanoza
-
 	case "${CONTAINER_RUNTIME}" in
 		docker)
 			docker compose -f "${COMPOSE_FILE}" up -d --build --force-recreate

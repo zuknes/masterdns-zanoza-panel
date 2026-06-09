@@ -638,7 +638,7 @@ main() {
 		if [ -f "$ZANOZA_TARGET" ]; then
 			warn "/usr/local/bin/zanoza already exists — overwriting."
 		fi
-		install -m 0755 "$ZANOZA_CLI" "$ZANOZA_TARGET"
+		ln -sf "$ZANOZA_CLI" "$ZANOZA_TARGET"
 		log "Management CLI installed: zanoza"
 	fi
 	write_install_conf
