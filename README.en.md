@@ -25,45 +25,19 @@ The admin creates "instances" (a **domain + encryption key** pair) and hands the
 ### Container (recommended) — any Linux with Docker or Podman
 
 ```sh
-# The installer auto-detects Docker or Podman and sets up what's needed.
-# Run this single command:
 curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-installer/scripts/container-install.sh | sudo bash
 ```
 
-**Under the hood:**
+Supports Docker and Podman (≥4.4 — Quadlet; <4.4 — `podman generate systemd`).
 
-- **Docker** — used if already installed (compose file). Auto-installed on Debian 12.
-- **Podman ≥4.4 + Quadlet** — used when Docker is absent. Native on RHEL 9+, Ubuntu 24.04+. The container is managed as a systemd service.
-- **Podman <4.4** — fallback via `podman generate systemd`. The installer offers a choice.
+Installer steps:
+- Detects or installs container runtime (Docker / Podman)
+- Frees port 53
+- Applies kernel tuning for DNS (optional)
+- Prompts for credentials (or auto-generates)
+- Prompts for TLS: self-signed (auto-renewed), Let's Encrypt, or none
 
-The installer walks you through:
-
-1. **Container runtime** — auto-detection, installs if missing
-2. **Port 53** — checks if it's in use and offers to free it (disables `DNSStubListener` in systemd-resolved)
-3. **Kernel tuning** — asks whether to apply sysctl optimizations for high DNS throughput (default: yes). Settings land in `/etc/sysctl.d/99-zanoza-docker.conf` and are easily removed: `sudo rm /etc/sysctl.d/99-zanoza-docker.conf && sudo sysctl --system`
-4. **Login/password** — auto-generated (10 + 20 chars) or entered manually
-5. **Certificate**:
-   - **1) Self-signed IP cert** — 6-day validity, auto-renewed inside the container (crond)
-   - **2) Let's Encrypt** — requires an A record `panel.example.com` → server IP
-   - **3) No TLS** — panel listens on `127.0.0.1` only (expose via nginx / SSH tunnel)
-
-The panel runs in `network_mode: host`, no need to publish ports. Auto-restart is enabled.
-
-**SELinux** — on systems with SELinux enforcing (RHEL, Rocky, Alma), volume mounts automatically get the `:Z` flag. On non-SELinux systems the flag is ignored.
-
-After installation, the `zanoza` CLI command is available:
-
-```sh
-zanoza              # interactive management menu (requires sudo)
-sudo zanoza restart  # restart the panel
-sudo zanoza logs     # view logs
-sudo zanoza update   # update (git pull + rebuild)
-sudo zanoza uninstall # remove the panel
-```
-
-Panel configuration — edit `.env` and restart with `zanoza restart`. Credentials are stored in `zanoza-config/panel.env` (hashed).
-
-For Docker local overrides (e.g. a different `restart` policy or extra volumes), create a `docker-compose.override.yml` — it is automatically picked up by Docker Compose and is git-ignored.
+After install: `zanoza` — management CLI (restart, logs, update, cert reissue, etc).
 
 ### Legacy — bare-metal (Ubuntu / Debian)
 
