@@ -338,7 +338,7 @@ menu() {
   0.  Exit
 ============================================================
 EOF
-		local choice retries=0
+		local choice="" retries=0
 		while [ -z "$choice" ] && [ $retries -lt 10 ]; do
 			choice="$(read_tty "Select [0-9]: " "")"
 			retries=$((retries + 1))
