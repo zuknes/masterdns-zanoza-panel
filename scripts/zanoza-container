@@ -145,7 +145,9 @@ change_port() {
 		die "Invalid port: $port"
 	fi
 	set_env_var "ZANOZA_PANEL_PORT" "$port"
-	log "Port set to ${port}. Restart to apply."
+	log "Port set to ${port}. Restarting..."
+	container_restart
+	log "Done."
 }
 
 change_path() {
@@ -153,7 +155,9 @@ change_path() {
 	p="$(read_tty "New admin path [/admin]: " "/admin")"
 	[[ "$p" == /* ]] || p="/${p}"
 	set_env_var "ZANOZA_PANEL_PATH" "$p"
-	log "Admin path set to ${p}. Restart to apply."
+	log "Admin path set to ${p}. Restarting..."
+	container_restart
+	log "Done."
 }
 
 set_env_var() {
