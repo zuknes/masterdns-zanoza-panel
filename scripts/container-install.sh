@@ -365,7 +365,7 @@ build_and_start() {
 				quadlet)
 					write_quadlet_file
 					systemctl daemon-reload
-					systemctl enable --now zanoza-panel
+					systemctl start zanoza-panel
 					log "Container started via systemd (zanoza-panel.service)"
 					;;
 				generate-systemd)
