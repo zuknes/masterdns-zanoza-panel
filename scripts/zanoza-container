@@ -286,7 +286,8 @@ update_panel() {
 		podman)
 			container_build
 			container_restart
-			podman image prune -f || true
+			# Remove dangling build-stage images left by multi-stage builds.
+			podman images -f dangling=true -q | xargs -r podman rmi 2>/dev/null || true
 			;;
 	esac
 	log "Update complete."
