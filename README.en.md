@@ -27,7 +27,7 @@ The admin creates "instances" (a **domain + encryption key** pair) and hands the
 ```sh
 # Docker will be auto-installed if missing.
 # Run the installer:
-curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-setup/scripts/docker-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-installer/scripts/docker-install.sh | sudo bash
 ```
 
 The installer walks you through:
@@ -59,7 +59,7 @@ For local overrides (e.g. a different `restart` policy or extra volumes), create
 ### Legacy — bare-metal (Ubuntu / Debian)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-setup/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-installer/scripts/install.sh | sudo bash
 ```
 
 The installer sets up Go, builds binaries from source, installs a systemd service and the `zanoza` CLI command.

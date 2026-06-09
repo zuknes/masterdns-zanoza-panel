@@ -27,7 +27,7 @@
 ```sh
 # Docker будет установлен автоматически если отсутствует.
 # Запустите установщик:
-curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-setup/scripts/docker-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-installer/scripts/docker-install.sh | sudo bash
 ```
 
 Установщик проведёт вас по шагам:
@@ -59,7 +59,7 @@ sudo zanoza uninstall # удалить панель
 ### Legacy — bare-metal (Ubuntu / Debian)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-setup/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-installer/scripts/install.sh | sudo bash
 ```
 
 Установщик устанавливает Go, собирает бинарники из исходников, ставит systemd-сервис, CLI-команду `zanoza`.

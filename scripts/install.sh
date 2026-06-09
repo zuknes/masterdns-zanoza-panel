@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Zanoza Panel installer (Debian/Ubuntu, run as root).
-#   curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-setup/scripts/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-installer/scripts/install.sh | sudo bash
 # Prompts for port, admin path and TLS certificate (3x-ui style), generates
 # admin credentials, builds the forked MasterDnsVPN server + the panel, and
 # installs the `zanoza` management command.
