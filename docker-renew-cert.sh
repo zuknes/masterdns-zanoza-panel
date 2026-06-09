@@ -15,7 +15,7 @@ RENEW_MARKER="/etc/zanoza-panel/.renew-self-signed"
 [ -f "$RENEW_MARKER" ] || exit 0
 [ -n "$CERT" ] && [ -n "$KEY" ] || exit 0
 
-IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+IP="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^172\.17\.' | grep -v '^172\.1[89]\.' | grep -v '^172\.2[0-9]\.' | grep -v '^172\.3[01]\.' | head -1)"
 if [ -z "$IP" ]; then
 	warn "Cannot determine server IP — skipping renewal."
 	exit 1

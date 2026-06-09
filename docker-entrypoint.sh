@@ -40,7 +40,7 @@ jq -n \
 
 # Self-signed cert auto-renewal via crond (only when marker file exists).
 if [ -f "$RENEW_MARKER" ]; then
-	pkill crond 2>/dev/null || true
+	pkill -x crond 2>/dev/null || true
 	sleep 1
 	echo "0 3 * * * /usr/local/bin/docker-renew-cert.sh >>/proc/1/fd/1 2>&1" | crontab -
 	# crond runs in the background; after the exec below it will be reparented

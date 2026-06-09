@@ -8,7 +8,7 @@ services:
     environment:
       - ZANOZA_MASTERDNS_BIN=/usr/local/bin/masterdns-server
     volumes:
-      - ./zanoza-config:/etc/zanoza-panel
+      - ./zanoza-config:/etc/zanoza-panel:Z
     healthcheck:
       test: ["CMD-SHELL", "curl -fksS --connect-timeout 5 https://127.0.0.1:$${ZANOZA_PANEL_PORT:-8443}$${ZANOZA_PANEL_PATH:-/admin} || curl -fksS --connect-timeout 5 http://127.0.0.1:$${ZANOZA_PANEL_PORT:-8443}$${ZANOZA_PANEL_PATH:-/admin} || exit 1"]
       interval: 30s

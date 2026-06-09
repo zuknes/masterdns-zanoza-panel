@@ -22,25 +22,34 @@
 
 ## Установка
 
-### Docker (рекомендуется) — любой Linux
+### Контейнер (рекомендуется) — любой Linux с Docker или Podman
 
 ```sh
-# Docker будет установлен автоматически если отсутствует.
-# Запустите установщик:
-curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-installer/scripts/docker-install.sh | sudo bash
+# Установщик сам определит Docker или Podman и установит нужное.
+# Запустите одной командой:
+curl -fsSL https://raw.githubusercontent.com/zuknes/masterdns-zanoza-panel/feature/docker-installer/scripts/container-install.sh | sudo bash
 ```
+
+**Что под капотом:**
+
+- **Docker** — используется если уже установлен (compose-файл). На Debian 12 устанавливается автоматически.
+- **Podman ≥4.4 + Quadlet** — используется если Docker отсутствует. Нативный для RHEL 9+, Ubuntu 24.04+. Контейнер управляется как systemd-сервис.
+- **Podman <4.4** — fallback через `podman generate systemd`. Установщик предложит выбор.
 
 Установщик проведёт вас по шагам:
 
-1. **Порт 53** — проверит и предложит освободить (отключит `DNSStubListener` у systemd-resolved)
-2. **Оптимизации ядра** — спросит, применить ли sysctl-тюнинг для высокой нагрузки DNS (по умолчанию — да). Настройки пишутся в `/etc/sysctl.d/99-zanoza-docker.conf` и легко убираются: `sudo rm /etc/sysctl.d/99-zanoza-docker.conf && sudo sysctl --system`
-3. **Логин/пароль** — авто-генерация (10 + 20 символов) или ввод вручную
-4. **Сертификат**:
+1. **Контейнерный рантайм** — автоопределение, при необходимости установка
+2. **Порт 53** — проверит и предложит освободить (отключит `DNSStubListener` у systemd-resolved)
+3. **Оптимизации ядра** — спросит, применить ли sysctl-тюнинг для высокой нагрузки DNS (по умолчанию — да). Настройки пишутся в `/etc/sysctl.d/99-zanoza-docker.conf` и легко убираются: `sudo rm /etc/sysctl.d/99-zanoza-docker.conf && sudo sysctl --system`
+4. **Логин/пароль** — авто-генерация (10 + 20 символов) или ввод вручную
+5. **Сертификат**:
    - **1) Self-signed IP-сертификат** — на 6 дней, авто-продление внутри контейнера (crond)
    - **2) Let's Encrypt** — нужна A-запись `panel.example.com` → IP сервера
    - **3) Без TLS** — панель слушает только `127.0.0.1` (доступ через nginx/SSH-туннель)
 
-Панель работает в `network_mode: host`, контейнер не нужно публиковать порты. Авто-рестарт включён (`restart: unless-stopped`).
+Панель работает в `network_mode: host`, контейнер не нужно публиковать порты. Авто-рестарт включён.
+
+**SELinux** — на системах с SELinux enforcing (RHEL, Rocky, Alma) к volume-маунтам автоматически добавляется флаг `:Z`. На системах без SELinux флаг игнорируется.
 
 После установки доступна CLI-команда `zanoza`:
 
@@ -54,7 +63,7 @@ sudo zanoza uninstall # удалить панель
 
 Конфигурация панели — редактируйте `.env` и перезапускайте через `zanoza restart`. Учётные данные хранятся в `zanoza-config/panel.env` (хэшированы).
 
-Для локальных переопределений (например, другой `restart` policy или дополнительные volume) создайте `docker-compose.override.yml` — он автоматически подхватывается Docker Compose и находится в `.gitignore`.
+Для локальных переопределений Docker (например, другой `restart` policy или дополнительные volume) создайте `docker-compose.override.yml` — он автоматически подхватывается Docker Compose и находится в `.gitignore`.
 
 ### Legacy — bare-metal (Ubuntu / Debian)
 
@@ -94,11 +103,12 @@ masterdns-zanoza-panel/
 ├── masterdns/                    # форк сервера MasterDnsVPN
 │   └── internal/keyring/         #   покеольцевой выбор ключей по домену
 ├── scripts/
-│   ├── docker-install.sh         #   установщик Docker (любой Linux)
-│   ├── zanoza-docker             #   CLI-команда управления Docker-версией
+│   ├── container-install.sh      #   установщик (Docker или Podman, любой Linux)
+│   ├── zanoza                    #   универсальная CLI-команда управления
+│   ├── zanoza-common.sh          #   общие хелперы (сертификаты, acme.sh, SELinux)
 │   └── install.sh                #   установщик bare-metal (Ubuntu/Debian)
-├── Dockerfile                    #   Docker-образ (Alpine, из исходников)
-├── docker-compose.yml            #   network_mode: host, restart: unless-stopped
+├── Dockerfile                    #   OCI-образ (Alpine, из исходников)
+├── docker-compose.yml            #   Docker Compose (network_mode: host)
 ├── docker-entrypoint.sh          #   entrypoint: config.json, crond для авто-renew
 ├── docker-renew-cert.sh          #   перевыпуск self-signed сертификата (crond)
 └── packaging/systemd/zanoza-panel.service

@@ -1,73 +1,102 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# zanoza — Docker management CLI for Zanoza Panel
-# Installed by docker-install.sh as /usr/local/bin/zanoza
+# zanoza — Management CLI for Zanoza Panel (Docker or Podman)
+# Installed by container-install.sh as /usr/local/bin/zanoza
 # ==============================================================================
 set -euo pipefail
 
-MARKER="/etc/zanoza-panel/.docker-install-dir"
+INSTALL_CONF="/etc/zanoza-panel/install.conf"
+LEGACY_MARKER="/etc/zanoza-panel/.docker-install-dir"
 
 # Source common helpers (installed alongside this script, or from repo).
 COMMON=""
-for d in "$(dirname "$(readlink -f "$0")")" /opt/zanoza-panel/scripts /usr/local/share/zanoza; do
+for d in "$(dirname "$(readlink -f "$0")")" /opt/zanoza-panel/scripts; do
 	[ -f "$d/zanoza-common.sh" ] && { COMMON="$d/zanoza-common.sh"; break; }
 done
 if [ -n "$COMMON" ]; then
 	# shellcheck source=./zanoza-common.sh
 	. "$COMMON"
 else
-	die() { printf '\033[1;31m[zanoza] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
-	log() { printf '\033[1;32m[zanoza]\033[0m %s\n' "$*"; }
-	warn() { printf '\033[1;33m[zanoza]\033[0m %s\n' "$*"; }
-	read_tty() {
-		local prompt="$1" def="${2:-}"
-		local reply
-		if [ -r /dev/tty ]; then
-			read -r -p "$prompt" reply </dev/tty || reply="$def"
-		else
-			reply="$def"
-		fi
-		printf '%s' "${reply:-$def}"
-	}
-	random_alnum() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$1"; }
+	die "zanoza-common.sh not found. Repository may be missing — re-run the installer."
 fi
 
-find_repo() {
-	if [ -f "$MARKER" ]; then
-		read -r dir <"$MARKER"
-		if [ -d "$dir" ] && [ -f "$dir/docker-compose.yml" ]; then
-			printf '%s' "$dir"
+# ==========================================================================
+# Runtime detection — determine how Zanoza was installed.
+# ==========================================================================
+detect_install() {
+	# 1. install.conf is authoritative.
+	if [ -f "$INSTALL_CONF" ]; then
+		# shellcheck source=/dev/null
+		. "$INSTALL_CONF"
+		if [ -z "${CONTAINER_RUNTIME:-}" ] || [ -z "${REPO_DIR:-}" ]; then
+			die "install.conf is incomplete. Re-run the installer."
+		fi
+		[ "${CONTAINER_RUNTIME:-}" = docker ] && COMPOSE_FILE="${COMPOSE_FILE:-$REPO_DIR/docker-compose.yml}"
+		return 0
+	fi
+
+	# 2. Legacy Docker marker (from old docker-install.sh).
+	if [ -f "$LEGACY_MARKER" ]; then
+		read -r REPO_DIR <"$LEGACY_MARKER"
+		if [ -d "$REPO_DIR" ] && [ -f "$REPO_DIR/docker-compose.yml" ]; then
+			CONTAINER_RUNTIME=docker
+			COMPOSE_FILE="$REPO_DIR/docker-compose.yml"
 			return 0
 		fi
 	fi
-	die "Repository not found. The marker ${MARKER} is missing or invalid. Run the installer again or set REPO_DIR."
+
+	# 3. Auto-detect: Docker.
+	if has_docker 2>/dev/null; then
+		for d in /opt/zanoza-panel /opt/masterdns-zanoza-panel; do
+			if [ -f "$d/docker-compose.yml" ] && \
+				docker compose -f "$d/docker-compose.yml" ps --quiet 2>/dev/null | grep -q .; then
+				CONTAINER_RUNTIME=docker
+				REPO_DIR="$d"
+				COMPOSE_FILE="$d/docker-compose.yml"
+				return 0
+			fi
+		done
+	fi
+
+	# 4. Auto-detect: Podman + Quadlet.
+	if [ -f /etc/containers/systemd/zanoza-panel.container ] && \
+		systemctl is-active --quiet zanoza-panel 2>/dev/null; then
+		CONTAINER_RUNTIME=podman
+		UNIT_NAME=zanoza-panel
+		INSTALL_METHOD=quadlet
+		REPO_DIR="$(grep -oP 'EnvironmentFile=\K[^[:space:]]+' /etc/containers/systemd/zanoza-panel.container 2>/dev/null | head -1 | xargs dirname 2>/dev/null || true)"
+		[ -z "$REPO_DIR" ] && REPO_DIR="/opt/zanoza-panel"
+		return 0
+	fi
+
+	# 5. Auto-detect: Podman + generate-systemd.
+	if systemctl is-active --quiet container-zanoza-panel 2>/dev/null; then
+		CONTAINER_RUNTIME=podman
+		UNIT_NAME=container-zanoza-panel
+		INSTALL_METHOD=generate-systemd
+		REPO_DIR="$(grep -oP 'EnvironmentFile=-\K[^[:space:]]+' /etc/systemd/system/container-zanoza-panel.service 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo '/opt/zanoza-panel')"
+		return 0
+	fi
+
+	# 6. Bare-metal install — not managed by this CLI.
+	if [ -f /usr/local/bin/zanoza-panel ] && systemctl is-active --quiet zanoza-panel 2>/dev/null; then
+		die "This appears to be a bare-metal install. Use the native zanoza CLI instead."
+	fi
+
+	die "Could not detect a Zanoza Panel installation. Run the installer first."
 }
 
-# Early check: can we talk to Docker?
-can_docker() { docker info >/dev/null 2>&1; }
-if ! can_docker; then
-	if [ "$(id -u)" -ne 0 ]; then
-		die "Cannot access Docker. Run with sudo: sudo zanoza ${*:-}"
-	else
-		die "Docker is not running or you lack permissions."
-	fi
-fi
-
-REPO_DIR="${REPO_DIR:-$(find_repo)}"
-ENV_FILE="$REPO_DIR/.env"
-CONFIG_DIR="$REPO_DIR/zanoza-config"
-PANEL_ENV="$CONFIG_DIR/panel.env"
-COMPOSE_FILE="$REPO_DIR/docker-compose.yml"
-
-# --------------------------------------------------------------------------
+# ==========================================================================
 # Action helpers
-# --------------------------------------------------------------------------
+# ==========================================================================
 show_url() {
 	local port="${ZANOZA_PANEL_PORT:-8443}"
 	local addr="${ZANOZA_PANEL_ADDR:-0.0.0.0}"
 	local path="${ZANOZA_PANEL_PATH:-/admin}"
 	local scheme="http"
 
+	ENV_FILE="$REPO_DIR/.env"
+	CONFIG_DIR="$REPO_DIR/zanoza-config"
 	[ -f "$ENV_FILE" ] && . "$ENV_FILE" 2>/dev/null || true
 	port="${ZANOZA_PANEL_PORT:-$port}"
 	path="${ZANOZA_PANEL_PATH:-$path}"
@@ -96,6 +125,7 @@ reset_credentials() {
 	salt="$(od -A n -t x1 -N 16 /dev/urandom | tr -d ' ')"
 	hash="$(printf '%s' "${salt}:${pass}" | sha256sum | awk '{print $1}')"
 
+	PANEL_ENV="$REPO_DIR/zanoza-config/panel.env"
 	umask 077
 	cat > "$PANEL_ENV" <<EOF
 ZANOZA_PANEL_USER='${user}'
@@ -105,7 +135,7 @@ EOF
 	log "Credentials updated."
 	log "  Login    : ${user}"
 	log "  Password : ${pass}"
-	log "Restart the panel to apply: docker compose -f ${COMPOSE_FILE} restart"
+	log "Restart the panel to apply: zanoza restart"
 }
 
 change_port() {
@@ -128,6 +158,7 @@ change_path() {
 
 set_env_var() {
 	local key="$1" val="$2"
+	ENV_FILE="$REPO_DIR/.env"
 	if [ -f "$ENV_FILE" ]; then
 		if grep -q "^${key}=" "$ENV_FILE"; then
 			sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
@@ -137,6 +168,18 @@ set_env_var() {
 	else
 		echo "${key}=${val}" > "$ENV_FILE"
 	fi
+}
+
+get_reload_cmd() {
+	case "${CONTAINER_RUNTIME}" in
+		docker)
+			printf 'docker compose -f %s restart' "${COMPOSE_FILE:-$REPO_DIR/docker-compose.yml}"
+			;;
+		podman)
+			printf 'systemctl restart %s' "${UNIT_NAME:-zanoza-panel}"
+			;;
+		*) echo "true" ;;
+	esac
 }
 
 reissue_cert() {
@@ -151,6 +194,9 @@ EOF
 	local choice
 	choice="$(read_tty "Option [1/2/3] (default 1): " "1")"
 
+	CONFIG_DIR="$REPO_DIR/zanoza-config"
+	ENV_FILE="$REPO_DIR/.env"
+
 	case "$choice" in
 	3)
 		set_env_var "ZANOZA_PANEL_ADDR" "127.0.0.1"
@@ -158,18 +204,20 @@ EOF
 		sed -i 's|^ZANOZA_TLS_KEY=|#ZANOZA_TLS_KEY=|' "$ENV_FILE" 2>/dev/null || true
 		rm -f "$CONFIG_DIR/tls.crt" "$CONFIG_DIR/tls.key" "$CONFIG_DIR/.renew-self-signed"
 		log "TLS disabled. Panel will listen on 127.0.0.1 only. Access via nginx/SSH tunnel."
-		log "Restart the panel to apply: docker compose -f ${COMPOSE_FILE} restart"
+		log "Restart the panel to apply: zanoza restart"
 		;;
 	2)
-		local domain
+		local domain reload_cmd
 		domain="$(read_tty "Panel domain (A record must point to this server): " "")"
 		[ -n "$domain" ] || die "domain is required."
 		if ! command -v openssl >/dev/null 2>&1; then
 			die "openssl is required for certificate generation."
 		fi
-		if issue_letsencrypt_cert "$domain" "$CONFIG_DIR/tls.crt" "$CONFIG_DIR/tls.key" \
-			"docker compose -f ${COMPOSE_FILE} restart"; then
+		reload_cmd="$(get_reload_cmd)"
+		if issue_letsencrypt_cert "$domain" "$CONFIG_DIR/tls.crt" "$CONFIG_DIR/tls.key" "$reload_cmd"; then
 			set_env_var "ZANOZA_PANEL_ADDR" "0.0.0.0"
+			set_env_var "ZANOZA_TLS_CERT" "/etc/zanoza-panel/tls.crt"
+			set_env_var "ZANOZA_TLS_KEY" "/etc/zanoza-panel/tls.key"
 			rm -f "$CONFIG_DIR/.renew-self-signed"
 			log "Let's Encrypt certificate installed for ${domain}."
 		else
@@ -181,11 +229,13 @@ EOF
 				die "openssl is required for certificate generation."
 			fi
 			local ip
-			ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+			ip="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^172\.17\.' | grep -v '^172\.1[89]\.' | grep -v '^172\.2[0-9]\.' | grep -v '^172\.3[01]\.' | head -1)"
 			[ -n "$ip" ] || ip="127.0.0.1"
 			if generate_self_signed_cert "$CONFIG_DIR/tls.crt" "$CONFIG_DIR/tls.key" "$ip" 6; then
 				touch "$CONFIG_DIR/.renew-self-signed"
 				set_env_var "ZANOZA_PANEL_ADDR" "0.0.0.0"
+				set_env_var "ZANOZA_TLS_CERT" "/etc/zanoza-panel/tls.crt"
+				set_env_var "ZANOZA_TLS_KEY" "/etc/zanoza-panel/tls.key"
 				log "Self-signed certificate generated for ${ip} (6-day validity, auto-renews daily)."
 			else
 				die "openssl failed to generate self-signed certificate."
@@ -194,14 +244,16 @@ EOF
 	esac
 }
 
+# get_reload_cmd() is provided by zanoza-common.sh
+
 restart_panel() {
 	log "Restarting..."
-	docker compose -f "$COMPOSE_FILE" restart
+	container_restart
 	log "Done."
 }
 
 view_logs() {
-	docker compose -f "$COMPOSE_FILE" logs -f
+	container_logs
 }
 
 update_panel() {
@@ -212,16 +264,41 @@ update_panel() {
 	local branch
 	branch="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
 	git -C "$REPO_DIR" pull origin "$branch" || die "git pull failed. Check your network and git remote (expected: origin/${branch})."
-	docker compose -f "$COMPOSE_FILE" up -d --build
+
+	case "${CONTAINER_RUNTIME}" in
+		docker)
+			docker compose -f "${COMPOSE_FILE}" up -d --build --force-recreate
+			;;
+		podman)
+			container_build
+			container_restart
+			;;
+	esac
 	log "Update complete."
 }
 
 uninstall_panel() {
 	local ans
-	ans="$(read_tty "This will stop the panel and remove all Docker resources. Proceed? [y/N]: " "N")"
+	ans="$(read_tty "This will stop the panel and remove all container resources. Proceed? [y/N]: " "N")"
 	case "$ans" in y|Y) ;; *) die "Aborted.";; esac
 
-	docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+	case "${CONTAINER_RUNTIME}" in
+		docker)
+			container_down
+			;;
+		podman)
+			systemctl stop "${UNIT_NAME}" 2>/dev/null || true
+			systemctl disable "${UNIT_NAME}" 2>/dev/null || true
+			rm -f /etc/containers/systemd/zanoza-panel.container
+			rm -f "/etc/systemd/system/${UNIT_NAME}.service"
+			systemctl daemon-reload 2>/dev/null || true
+			container_down
+			podman rmi zanoza-panel 2>/dev/null || true
+			;;
+	esac
+
+	CONFIG_DIR="$REPO_DIR/zanoza-config"
+	ENV_FILE="$REPO_DIR/.env"
 
 	ans="$(read_tty "Remove config directory (${CONFIG_DIR})? [y/N]: " "N")"
 	case "$ans" in y|Y) rm -rf "$CONFIG_DIR" && log "Removed ${CONFIG_DIR}.";; esac
@@ -229,22 +306,25 @@ uninstall_panel() {
 	ans="$(read_tty "Remove .env file (${ENV_FILE})? [y/N]: " "N")"
 	case "$ans" in y|Y) rm -f "$ENV_FILE" && log "Removed ${ENV_FILE}.";; esac
 
-	ans="$(read_tty "Remove the zanoza command (/usr/local/bin/zanoza) and the Docker install marker? [y/N]: " "N")"
-	case "$ans" in y|Y) rm -f /usr/local/bin/zanoza "$MARKER" && log "Removed zanoza CLI and marker.";; esac
+	ans="$(read_tty "Remove the zanoza command (/usr/local/bin/zanoza) and install config? [y/N]: " "N")"
+	case "$ans" in y|Y)
+		rm -f /usr/local/bin/zanoza "$INSTALL_CONF" "$LEGACY_MARKER"
+		log "Removed zanoza CLI and config."
+		;;
+	esac
 
 	log "Uninstall complete. The repository directory (${REPO_DIR}) was not removed — delete it manually if desired."
 }
 
-# --------------------------------------------------------------------------
+# ==========================================================================
 # Menu (interactive, as root)
-# --------------------------------------------------------------------------
+# ==========================================================================
 menu() {
-	local choice
 	while true; do
 		cat <<EOF
 
 ============================================================
-  Zanoza Panel (Docker) — Management Menu
+  Zanoza Panel (${CONTAINER_RUNTIME}) — Management Menu
 ============================================================
   1.  Show panel URL
   2.  Reset admin credentials
@@ -258,10 +338,12 @@ menu() {
   0.  Exit
 ============================================================
 EOF
-		choice=""
-		while [ -z "$choice" ]; do
+		local choice retries=0
+		while [ -z "$choice" ] && [ $retries -lt 10 ]; do
 			choice="$(read_tty "Select [0-9]: " "")"
+			retries=$((retries + 1))
 		done
+		[ -z "$choice" ] && { warn "No input received."; continue; }
 
 		case "$choice" in
 			1) show_url;;
@@ -279,12 +361,12 @@ EOF
 	done
 }
 
-# --------------------------------------------------------------------------
+# ==========================================================================
 # CLI commands (zanoza <command>)
-# --------------------------------------------------------------------------
+# ==========================================================================
 usage() {
 	cat <<EOF
-zanoza — Zanoza Panel management (Docker)
+zanoza — Zanoza Panel management (${CONTAINER_RUNTIME:-container})
 
 Usage: zanoza [command]
 
@@ -292,7 +374,7 @@ Commands:
   (none)      Interactive menu
   restart     Restart the panel
   logs        View container logs (follow)
-  update      Git pull + docker compose up --build
+  update      Git pull + rebuild + restart
   uninstall   Stop and remove the panel
   --help      This help
 
@@ -300,6 +382,22 @@ EOF
 }
 
 main() {
+	detect_install
+
+	# Only root or docker-group users can manage containers.
+	if [ "$(id -u)" -ne 0 ]; then
+		case "${CONTAINER_RUNTIME}" in
+			docker)
+				if ! docker info >/dev/null 2>&1; then
+					die "Cannot access Docker. Run with sudo or add yourself to the docker group."
+				fi
+				;;
+			podman)
+				die "Container management requires root. Run with: sudo zanoza ${*:-}"
+				;;
+		esac
+	fi
+
 	case "${1:-}" in
 		""|menu)       menu;;
 		restart)       restart_panel;;
